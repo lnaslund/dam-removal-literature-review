@@ -1,0 +1,160 @@
+---
+title: "manuscript analyses"
+author: "L. Naslund"
+date: "2023-11-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(viridis)
+
+wos <- read.csv("WOS_Citations.csv") %>% rowwise() %>%  mutate(number_obj = sum(c_across(X1a:X5f))) %>% ungroup()
+```
+
+```{r, number objectives considered}
+wos %>% filter(Include.in.MCDA.Stats=="Yes") %>%  group_by(number_obj) %>% summarize(count = n())
+```
+
+```{r, number of tools relative to objectives}
+cite_summary <-
+  wos %>% summarize(across(X1a:X5f, ~ sum(.x, na.rm = TRUE))) %>%
+  pivot_longer(cols = X1a:X5f,
+               names_to = "Objective",
+               values_to = "Count")%>% 
+  mutate(Percentage = (Count / 41)*100)
+
+cite_summary$Objective <-
+  c("Implementation Cost",
+    "Maintenance Cost",
+    "Water Demand",
+    "Power Demand",
+    "Navigation Demand",
+    "Flood Risk",
+    "Personal Hazard",
+    "Failure Hazard",
+    "Swift Water Recreation",
+    "Flat Water Recreation",
+    "Historic Site",
+    "Sense of Place",
+    "Focal Taxa",
+    "Biodiversity",
+    "Invasive Species",
+    "Greenhouse Gas Emissions",
+    "Water Quality", 
+    "Geomorphic Degradation")
+
+
+cite_summary$Category <- c("1. Monetary costs and \nfeasibility\n", 
+                           "1. Monetary costs and \nfeasibility\n",
+                           "2. Meet demands for \ninfrastructure services\n", 
+                           "2. Meet demands for \ninfrastructure services\n", 
+                           "2. Meet demands for \ninfrastructure services\n", 
+                           "2. Meet demands for \ninfrastructure services\n", 
+
+                           "3. Reduce safety hazards\n\n",
+                           "3. Reduce safety hazards\n\n", 
+                           "4. Meet community desires \nfor recreation, historic \npreservation, and sense of place", 
+                           "4. Meet community desires \nfor recreation, historic \npreservation, and sense of place", 
+                           "4. Meet community desires \nfor recreation, historic \npreservation, and sense of place", 
+                           "4. Meet community desires \nfor recreation, historic \npreservation, and sense of place", 
+                           "5. Maintain and restore the \nphysical, chemical, and biological \nintegrity of the Nation’s waters", 
+                           "5. Maintain and restore the \nphysical, chemical, and biological \nintegrity of the Nation’s waters", 
+                           "5. Maintain and restore the \nphysical, chemical, and biological \nintegrity of the Nation’s waters", 
+                           "5. Maintain and restore the \nphysical, chemical, and biological \nintegrity of the Nation’s waters", 
+                           "5. Maintain and restore the \nphysical, chemical, and biological \nintegrity of the Nation’s waters", 
+                           "5. Maintain and restore the \nphysical, chemical, and biological \nintegrity of the Nation’s waters")
+```
+
+```{r, proportion}
+MCDA_perc <- ggplot(cite_summary, aes(y=reorder(Objective, Percentage), x=Percentage, fill=Category))+ 
+  geom_bar(stat = 'identity')+
+  theme_bw()+
+  theme(legend.spacing.y = unit(0.2, 'cm'), 
+       text=element_text(family="Arial", color="black"), 
+       axis.title.y = element_blank(), 
+       axis.text = element_text(size=16, color="black"),
+       legend.text=element_text(size=16, color="black"),
+       legend.title=element_text(size=16, color="black"),
+       axis.title.x = element_text(size=16, color = "black"))+
+  guides(fill = guide_legend(byrow = TRUE, keyheight=unit(0.5, "char")))+
+  labs(x="Percent of Tools")+
+  scale_fill_manual(values=c("#96C498", "#94A7C5","#C0C1C1","#736E6B", "#1B264A"))
+
+                          
+windowsFonts(Arial=windowsFont("Arial"))
+
+png("figs/objectives_perc.png", width=10, height=9, units = "in", res=300)
+MCDA_perc
+dev.off()
+```
+
+
+```{r, co-occurrence}
+temp <- wos %>% select(X1a:X5f) %>% filter(across(X1a:X5f, ~ is.na(.x)==F))
+temp <- as.matrix(temp)
+out <- crossprod(temp)
+diag(out) <- 0
+
+out_df <- data.frame(row_name=cite_summary$Objective,out) 
+names(out_df) <-
+  c("Row", 
+    "Implementation Cost",
+    "Maintenance Cost",
+    "Water Demand",
+    "Power Demand",
+    "Navigation Demand",
+    "Flood Risk",
+    "Personal Hazard",
+    "Failure Hazard",
+    "Swift Water Recreation",
+    "Flat Water Recreation",
+    "Historic Site",
+    "Sense of Place",
+    "Focal Taxa",
+    "Biodiversity",
+    "Invasive Species",
+    "Greenhouse Gas Emissions",
+    "Water Quality", 
+    "Geomorphic Degradation")
+
+row_fct <-  c("Implementation Cost",
+    "Maintenance Cost",
+    "Water Demand",
+    "Power Demand",
+    "Navigation Demand",
+    "Flood Risk",
+    "Personal Hazard",
+    "Failure Hazard",
+    "Swift Water Recreation",
+    "Flat Water Recreation",
+    "Historic Site",
+    "Sense of Place",
+    "Focal Taxa",
+    "Biodiversity",
+    "Invasive Species",
+    "Greenhouse Gas Emissions",
+    "Water Quality", 
+    "Geomorphic Degradation")
+
+out_df <- out_df %>% pivot_longer(cols= `Implementation Cost`:`Geomorphic Degradation`, names_to="objective", values_to = "values") %>% mutate(Row = factor(Row, levels = row_fct), objective = factor(objective, levels = row_fct)) %>% mutate(perc = 100*(values/41)) 
+
+out_df$values[out_df$Row==out_df$objective] <- NA
+```
+
+```{r co-occurence heat map}
+png("figs/heat_map_Arial_perc.png", width=10, height=9, units = "in", res=300)
+heat_map <- ggplot(out_df,aes(Row, objective, fill=perc))+
+  geom_tile(color = "white",
+            lwd = 1.5,
+            linetype = 1)+
+  geom_text(aes(label = perc %>% round(0)), color = "white", size = 4) +
+  scale_fill_gradientn(colors = c("white","#34A3B2", "#7972BA"), name = "% of tools") + geom_text(aes(label = perc %>% round(0)), color = "black", size = 4)+
+  scale_x_discrete(position="bottom")+
+  coord_fixed()+
+  theme(text=element_text(family="Arial", color="black"), axis.title = element_blank(),axis.text.x = element_text(size=16, color="black", angle = 270, hjust=0), axis.text.y = element_text(size=16,color="black"), legend.title =  element_text(size=16,color="black"), legend.text= element_text(size=16,color="black"))
+heat_map
+dev.off()
+```
